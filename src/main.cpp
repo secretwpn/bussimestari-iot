@@ -21,9 +21,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 ESP8266WiFiMulti WiFiMulti;
 
 // define stops to flip through
+String DOTS[] = {"", ".", "..", "..."};
 String STOP_IDS[] = {"tampere:3635", "tampere:3636"};
 int STOPS_AMOUNT = 2;
+int DOTS_AMOUNT = 4;
 int stopIndex = 0;
+int dotIndex = 0;
 
 void printToDisplay(String text)
 {
@@ -90,6 +93,7 @@ void loop()
         String("{\"query\":\"{ stop(id: \\\"") +
         STOP_IDS[stopIndex] +
         String("\\\") { name stoptimesWithoutPatterns(numberOfDepartures: 1, omitNonPickups: true) {headsign realtimeDeparture serviceDay }}}\"}"));
+
     // flip between stops
     stopIndex++;
     if (stopIndex == STOPS_AMOUNT)
@@ -138,11 +142,19 @@ void loop()
     }
     else
     {
-      printToDisplay("Network request failed");
+      printToDisplay("Network error" + String(DOTS[dotIndex]));
       Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
 
     http.end();
+  } else {
+    printToDisplay("No network" + String(DOTS[dotIndex]));
+  }
+
+  dotIndex++;
+  if (dotIndex == DOTS_AMOUNT)
+  {
+    dotIndex = 0;
   }
 
   delay(10000);
