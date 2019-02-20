@@ -10,17 +10,20 @@
 #include <Adafruit_SSD1306.h>
 // define SECRET_SSID, SECRET_PASS - WiFi details in secrets.h
 #include <secrets.h>
-// define STOP_ID - gtfsId of your starting bus stop in api.h
-#include <api.h>
-
+// timezone offset in hours (+2 for Finland)
 #define TIME_OFFSET 2 * 60 * 60
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 #define OLED_RESET -1    // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 ESP8266WiFiMulti WiFiMulti;
+
+// define stops to flip through
+String STOP_IDS[] = {"tampere:3635", "tampere:3636"};
+int STOPS_AMOUNT = 2;
+int stopIndex = 0;
 
 void printToDisplay(String text)
 {
@@ -40,7 +43,7 @@ void setup()
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally Address 0x3C for 128x32
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
   {
-    Serial.println("SSD1306 allocation failed");
+    Serial.println("SSD1306 Display module allocation failed");
     for (;;)
       ; // Don't proceed, loop forever
   }
@@ -53,10 +56,14 @@ void setup()
   // Clear the buffer
   display.clearDisplay();
 
-  printToDisplay("Initializing");
+  printToDisplay("Initializing...");
   delay(1000);
 
   printToDisplay("Let's go!");
+  delay(1000);
+
+  // Clear the buffer
+  display.clearDisplay();
 
   WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(SECRET_SSID, SECRET_PASS);
@@ -80,10 +87,15 @@ void loop()
     http.begin("http://api.digitransit.fi/routing/v1/routers/finland/index/graphql"); //HTTP
     http.addHeader("Content-Type", "application/json");
     int httpCode = http.POST(
-      String("{\"query\":\"{ stop(id: \\\"") +
-      STOP_ID +
-      String("\\\") { name stoptimesWithoutPatterns(numberOfDepartures: 1, omitNonPickups: true) {headsign realtimeArrival serviceDay }}}\"}")
-    );
+        String("{\"query\":\"{ stop(id: \\\"") +
+        STOP_IDS[stopIndex] +
+        String("\\\") { name stoptimesWithoutPatterns(numberOfDepartures: 1, omitNonPickups: true) {headsign realtimeDeparture serviceDay }}}\"}"));
+    // flip between stops
+    stopIndex++;
+    if (stopIndex == STOPS_AMOUNT)
+    {
+      stopIndex = 0;
+    }
 
     // httpCode will be negative on error
     if (httpCode > 0)
@@ -98,11 +110,11 @@ void loop()
       // todo check if we get the data as expected
       JsonObject &stoptimes = root["data"]["stop"]["stoptimesWithoutPatterns"][0]; // array size <= numberOfDepartures
       const char *headsign = stoptimes["headsign"];
-      long realtimeArrival = stoptimes["realtimeArrival"];
+      long busTime = stoptimes["realtimeDeparture"];
       long serviceDay = stoptimes["serviceDay"];
 
       setTime(serviceDay);
-      adjustTime(realtimeArrival + TIME_OFFSET); // + arrival + timezone offset
+      adjustTime(busTime + TIME_OFFSET); // + arrival + timezone offset
       String hh = addLeadingZero(hour());
       String mm = addLeadingZero(minute());
       String ss = addLeadingZero(second());
@@ -133,5 +145,5 @@ void loop()
     http.end();
   }
 
-  delay(20000);
+  delay(10000);
 }
